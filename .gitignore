@@ -1,0 +1,6 @@
+target/
+*.jar
+*.class
+.terraform/
+terraform.tfstate*
+*.tfstate.backup
