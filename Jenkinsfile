@@ -2,14 +2,17 @@ pipeline {
     agent any
 
     environment {
-        AWS_DEFAULT_REGION = 'us-east-1'
-        ECR_REPO = '083400432136.dkr.ecr.us-east-1.amazonaws.com/devops-blog-app'
+        AWS_REGION = "us-east-1"
+        ECR_REGISTRY = "083400432136.dkr.ecr.us-east-1.amazonaws.com"
+        IMAGE_NAME = "devops-blog-app"
+        K8S_NAMESPACE = "devops"
     }
 
     stages {
-        stage('Checkout') {
+
+        stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/<your-repo>'
+                git branch: 'main', credentialsId: 'github-creds', url: 'https://github.com/Loksjain/Full-stack-Blog-application.git'
             }
         }
 
@@ -21,40 +24,41 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    docker.build("devops-blog-app:latest", ".")
-                }
+                sh """
+                    docker build -t ${IMAGE_NAME}:latest .
+                    docker tag ${IMAGE_NAME}:latest ${ECR_REGISTRY}/${IMAGE_NAME}:latest
+                """
             }
         }
 
         stage('Login to ECR') {
             steps {
-                withAWS(credentials: 'aws-creds', region: 'us-east-1') {
-                    sh '''
-                      aws ecr get-login-password --region us-east-1 \
-                      | docker login --username AWS --password-stdin 083400432136.dkr.ecr.us-east-1.amazonaws.com
-                    '''
+                withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh """
+                        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+                        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+                        aws configure set default.region ${AWS_REGION}
+                        
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    """
                 }
             }
         }
 
-        stage('Push to ECR') {
+        stage('Push Docker Image to ECR') {
             steps {
-                sh '''
-                  docker tag devops-blog-app:latest $ECR_REPO:latest
-                  docker push $ECR_REPO:latest
-                '''
+                sh """
+                    docker push ${ECR_REGISTRY}/${IMAGE_NAME}:latest
+                """
             }
         }
 
         stage('Deploy to EKS') {
             steps {
-                withAWS(credentials: 'aws-creds', region: 'us-east-1') {
-                    sh '''
-                      aws eks update-kubeconfig --name devops-cluster --region us-east-1
-                      kubectl rollout restart deployment/devops-blog-deployment -n devops
-                    '''
-                }
+                sh """
+                    aws eks update-kubeconfig --region ${AWS_REGION} --name devops-cluster
+                    kubectl set image deployment/devops-blog-deployment devops-blog-app=${ECR_REGISTRY}/${IMAGE_NAME}:latest -n ${K8S_NAMESPACE}
+                """
             }
         }
     }
