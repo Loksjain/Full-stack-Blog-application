@@ -55,15 +55,15 @@ pipeline {
         }
 
         stage('Deploy to EKS') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
-                    sh """
-                        aws eks update-kubeconfig --region ${AWS_REGION} --name devops-cluster
-                        kubectl set image deployment/${DEPLOYMENT_NAME} ${CONTAINER_NAME}=${ECR_REGISTRY}/${IMAGE_NAME}:latest -n ${K8S_NAMESPACE}
-                        kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
-                    """
-                }
-            }
+    steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+            sh """
+                aws eks update-kubeconfig --region ${AWS_REGION} --name devops-cluster
+                kubectl set image deployment/devops-blog-deployment devops-blog=${ECR_REGISTRY}/${IMAGE_NAME}:latest -n ${K8S_NAMESPACE}
+            """
         }
+    }
+}
+
     }
 }
