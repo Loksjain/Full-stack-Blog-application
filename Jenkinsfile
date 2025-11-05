@@ -6,6 +6,9 @@ pipeline {
         ECR_REGISTRY = "083400432136.dkr.ecr.us-east-1.amazonaws.com"
         IMAGE_NAME = "devops-blog-app"
         K8S_NAMESPACE = "devops"
+        DEPLOYMENT_NAME = "devops-blog-deployment"
+        CONTAINER_NAME = "devops-blog-app"
+        PATH = "/usr/local/bin:/usr/bin:/bin:/usr/local/aws-cli/v2/current/bin"
     }
 
     stages {
@@ -17,11 +20,11 @@ pipeline {
         }
 
         stage('Build JAR') {
-    steps {
-        sh 'chmod +x mvnw'
-        sh './mvnw clean package -DskipTests'
-    }
-}
+            steps {
+                sh 'chmod +x mvnw'
+                sh './mvnw clean package -DskipTests'
+            }
+        }
 
         stage('Build Docker Image') {
             steps {
@@ -34,16 +37,12 @@ pipeline {
 
         stage('Login to ECR') {
             steps {
-                withCredentials([[
-  $class: 'AmazonWebServicesCredentialsBinding',
-  credentialsId: 'aws-creds'
-]]) {
-    sh '''
-      aws ecr get-login-password --region us-east-1 \
-      | docker login --username AWS --password-stdin 083400432136.dkr.ecr.us-east-1.amazonaws.com
-    '''
-}
-
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} \
+                        | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    """
+                }
             }
         }
 
@@ -57,10 +56,13 @@ pipeline {
 
         stage('Deploy to EKS') {
             steps {
-                sh """
-                    aws eks update-kubeconfig --region ${AWS_REGION} --name devops-cluster
-                    kubectl set image deployment/devops-blog-deployment devops-blog-app=${ECR_REGISTRY}/${IMAGE_NAME}:latest -n ${K8S_NAMESPACE}
-                """
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+                    sh """
+                        aws eks update-kubeconfig --region ${AWS_REGION} --name devops-cluster
+                        kubectl set image deployment/${DEPLOYMENT_NAME} ${CONTAINER_NAME}=${ECR_REGISTRY}/${IMAGE_NAME}:latest -n ${K8S_NAMESPACE}
+                        kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
+                    """
+                }
             }
         }
     }
